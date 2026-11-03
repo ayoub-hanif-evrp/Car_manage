@@ -8,9 +8,11 @@ plugins {
 android {
     namespace = "com.meinloga.my_logan"
     compileSdk = flutter.compileSdkVersion
-    ndkVersion = flutter.ndkVersion
+    // Use locally installed intact NDK (27.x copy was corrupted).
+    ndkVersion = "28.2.13676358"
 
     compileOptions {
+        isCoreLibraryDesugaringEnabled = true
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17
     }
@@ -21,7 +23,7 @@ android {
 
     defaultConfig {
         applicationId = "com.meinloga.my_logan"
-        // Magic Lane Maps SDK requires API 27+ (official minimum-requirements docs).
+        // Kept at 27 for future Magic Lane compatibility if gates clear.
         minSdk = 27
         targetSdk = flutter.targetSdkVersion
         versionCode = flutter.versionCode
@@ -30,11 +32,13 @@ android {
 
     buildTypes {
         release {
-            // TODO: Add your own signing config for the release build.
-            // Signing with the debug keys for now, so `flutter run --release` works.
             signingConfig = signingConfigs.getByName("debug")
         }
     }
+}
+
+dependencies {
+    coreLibraryDesugaring("com.android.tools:desugar_jdk_libs:2.1.4")
 }
 
 flutter {
