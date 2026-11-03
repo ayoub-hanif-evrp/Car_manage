@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../core/app_state.dart';
+import '../../core/theme.dart';
 import '../../data/models.dart';
 
 class FavoritesPanel extends StatelessWidget {
@@ -17,7 +18,7 @@ class FavoritesPanel extends StatelessWidget {
           children: [
             Expanded(
               child: Text(
-                'Favorite destinations',
+                'Places',
                 style: Theme.of(context).textTheme.titleMedium,
               ),
             ),
@@ -30,23 +31,37 @@ class FavoritesPanel extends StatelessWidget {
         ),
         const SizedBox(height: 4),
         Text(
-          'Saved for later navigation. Coordinates only — no live routing yet.',
-          style: Theme.of(context).textTheme.bodySmall,
+          'Home, Work, and saved spots for Navigation shortcuts.',
+          style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                color: LoganTheme.muted,
+              ),
         ),
         const SizedBox(height: 8),
         if (state.favorites.isEmpty)
-          const Text('No favorites yet. Examples: Home, University.')
+          Text(
+            'No places yet. Add Home or Work to see them on Navigation.',
+            style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                  color: LoganTheme.muted,
+                ),
+          )
         else
           for (final place in state.favorites)
-            Card(
-              elevation: 0,
+            Container(
               margin: const EdgeInsets.only(bottom: 8),
+              decoration: BoxDecoration(
+                color: LoganTheme.paper,
+                borderRadius: BorderRadius.circular(16),
+              ),
               child: ListTile(
+                leading: Icon(_kindIcon(place.kind), color: LoganTheme.accent),
                 title: Text(place.name),
                 subtitle: Text(
-                  '${place.latitude.toStringAsFixed(5)}, '
+                  '${place.kind.label}'
+                  '${place.visitCount > 0 ? ' · ${place.visitCount} trips' : ''}'
+                  '\n${place.latitude.toStringAsFixed(5)}, '
                   '${place.longitude.toStringAsFixed(5)}',
                 ),
+                isThreeLine: true,
                 onTap: () => _edit(context, place: place),
                 trailing: IconButton(
                   icon: const Icon(Icons.delete_outline),
@@ -58,11 +73,17 @@ class FavoritesPanel extends StatelessWidget {
     );
   }
 
+  IconData _kindIcon(PlaceKind kind) => switch (kind) {
+        PlaceKind.home => Icons.home_outlined,
+        PlaceKind.work => Icons.work_outline,
+        PlaceKind.saved => Icons.star_outline,
+      };
+
   Future<void> _confirmDelete(BuildContext context, FavoritePlace place) async {
     final ok = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: const Text('Delete favorite?'),
+        title: const Text('Delete place?'),
         content: Text(place.name),
         actions: [
           TextButton(
@@ -102,12 +123,14 @@ class _FavoriteEditPageState extends State<FavoriteEditPage> {
   final _name = TextEditingController();
   final _lat = TextEditingController();
   final _lng = TextEditingController();
+  late PlaceKind _kind;
   String? _error;
 
   @override
   void initState() {
     super.initState();
     final p = widget.place;
+    _kind = p?.kind ?? PlaceKind.saved;
     if (p != null) {
       _name.text = p.name;
       _lat.text = p.latitude.toString();
@@ -147,6 +170,9 @@ class _FavoriteEditPageState extends State<FavoriteEditPage> {
         name: name,
         latitude: lat,
         longitude: lng,
+        kind: _kind,
+        visitCount: existing?.visitCount ?? 0,
+        lastUsed: existing?.lastUsed,
       ),
       isNew: existing == null,
     );
@@ -157,7 +183,7 @@ class _FavoriteEditPageState extends State<FavoriteEditPage> {
   Widget build(BuildContext context) {
     final isNew = widget.place == null;
     return Scaffold(
-      appBar: AppBar(title: Text(isNew ? 'Add favorite' : 'Edit favorite')),
+      appBar: AppBar(title: Text(isNew ? 'Add place' : 'Edit place')),
       body: ListView(
         padding: const EdgeInsets.all(16),
         children: [
@@ -165,10 +191,25 @@ class _FavoriteEditPageState extends State<FavoriteEditPage> {
             controller: _name,
             decoration: const InputDecoration(
               labelText: 'Name',
-              hintText: 'Home, University…',
+              hintText: 'Home, Office…',
             ),
             textCapitalization: TextCapitalization.words,
           ),
+          const SizedBox(height: 12),
+          Text('Type', style: Theme.of(context).textTheme.titleSmall),
+          const SizedBox(height: 8),
+          Wrap(
+            spacing: 8,
+            children: [
+              for (final k in PlaceKind.values)
+                ChoiceChip(
+                  label: Text(k.label),
+                  selected: _kind == k,
+                  onSelected: (_) => setState(() => _kind = k),
+                ),
+            ],
+          ),
+          const SizedBox(height: 12),
           TextField(
             controller: _lat,
             keyboardType: const TextInputType.numberWithOptions(
@@ -180,6 +221,7 @@ class _FavoriteEditPageState extends State<FavoriteEditPage> {
               hintText: 'e.g. 33.5731',
             ),
           ),
+          const SizedBox(height: 8),
           TextField(
             controller: _lng,
             keyboardType: const TextInputType.numberWithOptions(
@@ -193,7 +235,10 @@ class _FavoriteEditPageState extends State<FavoriteEditPage> {
           ),
           if (_error != null) ...[
             const SizedBox(height: 12),
-            Text(_error!, style: TextStyle(color: Theme.of(context).colorScheme.error)),
+            Text(
+              _error!,
+              style: TextStyle(color: Theme.of(context).colorScheme.error),
+            ),
           ],
           const SizedBox(height: 24),
           FilledButton(onPressed: _save, child: const Text('Save')),

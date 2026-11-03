@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../../core/app_state.dart';
 import '../../core/format.dart';
+import '../../core/theme.dart';
 import '../../data/models.dart';
 
 class FuelScreen extends StatelessWidget {
@@ -12,24 +13,35 @@ class FuelScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
+      backgroundColor: LoganTheme.stone,
       body: ListView(
-        padding: const EdgeInsets.fromLTRB(16, 16, 16, 88),
+        padding: const EdgeInsets.fromLTRB(16, 20, 16, 88),
         children: [
-          Text('Fuel', style: Theme.of(context).textTheme.headlineSmall),
-          const SizedBox(height: 8),
+          Text('Fuel', style: Theme.of(context).textTheme.headlineMedium),
+          const SizedBox(height: 6),
           Text(
             'Monthly spending = sum of amounts paid that month. '
             'Consumption uses full-to-full intervals only.',
-            style: Theme.of(context).textTheme.bodySmall,
+            style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                  color: LoganTheme.muted,
+                ),
           ),
-          const SizedBox(height: 12),
+          const SizedBox(height: 14),
           if (state.fuelEntries.isEmpty)
-            const Text('No fuel entries yet.')
+            Text(
+              'No fuel entries yet.',
+              style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                    color: LoganTheme.muted,
+                  ),
+            )
           else
             for (final e in state.fuelEntries)
-              Card(
-                elevation: 0,
+              Container(
                 margin: const EdgeInsets.only(bottom: 8),
+                decoration: BoxDecoration(
+                  color: LoganTheme.paper,
+                  borderRadius: BorderRadius.circular(16),
+                ),
                 child: ListTile(
                   title: Text(
                     '${formatDate(e.date)} · ${formatLiters(e.liters)} · ${formatDh(e.totalPaidDh)}',
@@ -50,6 +62,8 @@ class FuelScreen extends StatelessWidget {
       ),
       floatingActionButton: FloatingActionButton.extended(
         onPressed: () => _openForm(context),
+        backgroundColor: LoganTheme.accent,
+        foregroundColor: LoganTheme.paper,
         icon: const Icon(Icons.local_gas_station),
         label: const Text('Add fuel'),
       ),

@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../../core/app_state.dart';
 import '../../core/format.dart';
+import '../../core/theme.dart';
 import '../../data/models.dart';
 
 class GarageScreen extends StatelessWidget {
@@ -16,23 +17,39 @@ class GarageScreen extends StatelessWidget {
     final lifetime = state.repairs.fold<double>(0, (s, e) => s + e.totalPriceDh);
 
     return Scaffold(
+      backgroundColor: LoganTheme.stone,
       body: ListView(
-        padding: const EdgeInsets.fromLTRB(16, 16, 16, 88),
+        padding: const EdgeInsets.fromLTRB(16, 20, 16, 88),
         children: [
-          Text('Garage', style: Theme.of(context).textTheme.headlineSmall),
-          const SizedBox(height: 8),
-          Text('This month: ${formatDh(monthTotal)} · All time: ${formatDh(lifetime)}'),
-          const SizedBox(height: 12),
+          Text('Garage', style: Theme.of(context).textTheme.headlineMedium),
+          const SizedBox(height: 6),
+          Text(
+            'This month: ${formatDh(monthTotal)} · All time: ${formatDh(lifetime)}',
+            style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                  color: LoganTheme.muted,
+                ),
+          ),
+          const SizedBox(height: 14),
           if (state.repairs.isEmpty)
-            const Text('No repairs yet.')
+            Text(
+              'No repairs yet.',
+              style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                    color: LoganTheme.muted,
+                  ),
+            )
           else
             for (final e in state.repairs)
-              Card(
-                elevation: 0,
+              Container(
                 margin: const EdgeInsets.only(bottom: 8),
+                decoration: BoxDecoration(
+                  color: LoganTheme.paper,
+                  borderRadius: BorderRadius.circular(16),
+                ),
                 child: ListTile(
                   title: Text(e.description),
-                  subtitle: Text('${formatDate(e.date)} · ${formatDh(e.totalPriceDh)}'),
+                  subtitle: Text(
+                    '${formatDate(e.date)} · ${formatDh(e.totalPriceDh)}',
+                  ),
                   onTap: () => _openForm(context, existing: e),
                   trailing: IconButton(
                     icon: const Icon(Icons.delete_outline),
@@ -44,6 +61,8 @@ class GarageScreen extends StatelessWidget {
       ),
       floatingActionButton: FloatingActionButton.extended(
         onPressed: () => _openForm(context),
+        backgroundColor: LoganTheme.accent,
+        foregroundColor: LoganTheme.paper,
         icon: const Icon(Icons.build),
         label: const Text('Add repair'),
       ),

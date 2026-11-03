@@ -204,18 +204,62 @@ class ReminderEntry {
   }
 }
 
+enum PlaceKind { home, work, saved }
+
+extension PlaceKindX on PlaceKind {
+  String get storageKey => switch (this) {
+        PlaceKind.home => 'home',
+        PlaceKind.work => 'work',
+        PlaceKind.saved => 'saved',
+      };
+
+  String get label => switch (this) {
+        PlaceKind.home => 'Home',
+        PlaceKind.work => 'Work',
+        PlaceKind.saved => 'Saved',
+      };
+
+  static PlaceKind fromStorage(String? value) => switch (value) {
+        'home' => PlaceKind.home,
+        'work' => PlaceKind.work,
+        _ => PlaceKind.saved,
+      };
+}
+
 class FavoritePlace {
   const FavoritePlace({
     required this.id,
     required this.name,
     required this.latitude,
     required this.longitude,
+    this.kind = PlaceKind.saved,
+    this.visitCount = 0,
+    this.lastUsed,
   });
 
   final int id;
   final String name;
   final double latitude;
   final double longitude;
+  final PlaceKind kind;
+  final int visitCount;
+  final DateTime? lastUsed;
+}
+
+class RecentDestination {
+  const RecentDestination({
+    required this.id,
+    required this.name,
+    required this.latitude,
+    required this.longitude,
+    required this.lastUsed,
+  });
+
+  final int id;
+  final String name;
+  final double latitude;
+  final double longitude;
+  final DateTime lastUsed;
 }
 
 class RecentTransaction {

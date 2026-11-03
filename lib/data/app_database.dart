@@ -22,7 +22,7 @@ class AppDatabase {
     final path = p.join(dir.path, 'my_logan.db');
     return openDatabase(
       path,
-      version: 2,
+      version: 3,
       onCreate: (db, version) async {
         await db.execute('''
 CREATE TABLE fuel_entries (
@@ -54,13 +54,8 @@ CREATE TABLE reminders (
   interval_km REAL,
   notes TEXT
 )''');
-        await db.execute('''
-CREATE TABLE favorite_places (
-  id INTEGER PRIMARY KEY AUTOINCREMENT,
-  name TEXT NOT NULL,
-  latitude REAL NOT NULL,
-  longitude REAL NOT NULL
-)''');
+        await _createFavoritesV3(db);
+        await _createRecents(db);
 
         for (final kind in ReminderKind.values) {
           await db.insert('reminders', {
@@ -78,8 +73,44 @@ CREATE TABLE favorite_places (
             'ALTER TABLE reminders ADD COLUMN interval_km REAL',
           );
         }
+        if (oldVersion < 3) {
+          await db.execute(
+            "ALTER TABLE favorite_places ADD COLUMN kind TEXT NOT NULL DEFAULT 'saved'",
+          );
+          await db.execute(
+            'ALTER TABLE favorite_places ADD COLUMN visit_count INTEGER NOT NULL DEFAULT 0',
+          );
+          await db.execute(
+            'ALTER TABLE favorite_places ADD COLUMN last_used_ms INTEGER',
+          );
+          await _createRecents(db);
+        }
       },
     );
+  }
+
+  Future<void> _createFavoritesV3(Database db) async {
+    await db.execute('''
+CREATE TABLE favorite_places (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  name TEXT NOT NULL,
+  latitude REAL NOT NULL,
+  longitude REAL NOT NULL,
+  kind TEXT NOT NULL DEFAULT 'saved',
+  visit_count INTEGER NOT NULL DEFAULT 0,
+  last_used_ms INTEGER
+)''');
+  }
+
+  Future<void> _createRecents(Database db) async {
+    await db.execute('''
+CREATE TABLE IF NOT EXISTS recent_destinations (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  name TEXT NOT NULL,
+  latitude REAL NOT NULL,
+  longitude REAL NOT NULL,
+  last_used_ms INTEGER NOT NULL
+)''');
   }
 
   Future<void> close() async {
@@ -94,17 +125,6 @@ CREATE TABLE favorite_places (
     final db = await database;
     final rows = await db.query('fuel_entries', orderBy: 'date_ms DESC, id DESC');
     return rows.map(_fuelFromRow).toList();
-  }
-
-  Future<FuelEntry?> getLatestFuelEntry() async {
-    final db = await database;
-    final rows = await db.query(
-      'fuel_entries',
-      orderBy: 'odometer_km DESC, date_ms DESC, id DESC',
-      limit: 1,
-    );
-    if (rows.isEmpty) return null;
-    return _fuelFromRow(rows.first);
   }
 
   Future<int> insertFuel(FuelEntry entry) async {
@@ -186,17 +206,11 @@ CREATE TABLE favorite_places (
 
   Future<List<FavoritePlace>> getFavorites() async {
     final db = await database;
-    final rows = await db.query('favorite_places', orderBy: 'id ASC');
-    return rows
-        .map(
-          (r) => FavoritePlace(
-            id: r['id'] as int,
-            name: r['name'] as String,
-            latitude: (r['latitude'] as num).toDouble(),
-            longitude: (r['longitude'] as num).toDouble(),
-          ),
-        )
-        .toList();
+    final rows = await db.query(
+      'favorite_places',
+      orderBy: 'kind ASC, visit_count DESC, id ASC',
+    );
+    return rows.map(_favoriteFromRow).toList();
   }
 
   Future<int> insertFavorite(FavoritePlace place) async {
@@ -205,6 +219,9 @@ CREATE TABLE favorite_places (
       'name': place.name,
       'latitude': place.latitude,
       'longitude': place.longitude,
+      'kind': place.kind.storageKey,
+      'visit_count': place.visitCount,
+      'last_used_ms': place.lastUsed?.millisecondsSinceEpoch,
     });
   }
 
@@ -216,6 +233,9 @@ CREATE TABLE favorite_places (
         'name': place.name,
         'latitude': place.latitude,
         'longitude': place.longitude,
+        'kind': place.kind.storageKey,
+        'visit_count': place.visitCount,
+        'last_used_ms': place.lastUsed?.millisecondsSinceEpoch,
       },
       where: 'id = ?',
       whereArgs: [place.id],
@@ -226,6 +246,92 @@ CREATE TABLE favorite_places (
     final db = await database;
     await db.delete('favorite_places', where: 'id = ?', whereArgs: [id]);
   }
+
+  Future<void> recordFavoriteVisit(int id) async {
+    final db = await database;
+    await db.rawUpdate(
+      'UPDATE favorite_places SET visit_count = visit_count + 1, last_used_ms = ? WHERE id = ?',
+      [DateTime.now().millisecondsSinceEpoch, id],
+    );
+  }
+
+  // --- Recents ---
+
+  Future<List<RecentDestination>> getRecents({int limit = 8}) async {
+    final db = await database;
+    final rows = await db.query(
+      'recent_destinations',
+      orderBy: 'last_used_ms DESC',
+      limit: limit,
+    );
+    return rows
+        .map(
+          (r) => RecentDestination(
+            id: r['id'] as int,
+            name: r['name'] as String,
+            latitude: (r['latitude'] as num).toDouble(),
+            longitude: (r['longitude'] as num).toDouble(),
+            lastUsed:
+                DateTime.fromMillisecondsSinceEpoch(r['last_used_ms'] as int),
+          ),
+        )
+        .toList();
+  }
+
+  Future<void> upsertRecent({
+    required String name,
+    required double latitude,
+    required double longitude,
+  }) async {
+    final db = await database;
+    final now = DateTime.now().millisecondsSinceEpoch;
+    final existing = await db.query(
+      'recent_destinations',
+      where: 'name = ? AND ABS(latitude - ?) < 0.0003 AND ABS(longitude - ?) < 0.0003',
+      whereArgs: [name, latitude, longitude],
+      limit: 1,
+    );
+    if (existing.isNotEmpty) {
+      await db.update(
+        'recent_destinations',
+        {'last_used_ms': now, 'name': name},
+        where: 'id = ?',
+        whereArgs: [existing.first['id']],
+      );
+    } else {
+      await db.insert('recent_destinations', {
+        'name': name,
+        'latitude': latitude,
+        'longitude': longitude,
+        'last_used_ms': now,
+      });
+    }
+    final all = await db.query(
+      'recent_destinations',
+      orderBy: 'last_used_ms DESC',
+    );
+    if (all.length > 8) {
+      for (final row in all.skip(8)) {
+        await db.delete(
+          'recent_destinations',
+          where: 'id = ?',
+          whereArgs: [row['id']],
+        );
+      }
+    }
+  }
+
+  FavoritePlace _favoriteFromRow(Map<String, Object?> r) => FavoritePlace(
+        id: r['id'] as int,
+        name: r['name'] as String,
+        latitude: (r['latitude'] as num).toDouble(),
+        longitude: (r['longitude'] as num).toDouble(),
+        kind: PlaceKindX.fromStorage(r['kind'] as String?),
+        visitCount: r['visit_count'] as int? ?? 0,
+        lastUsed: r['last_used_ms'] == null
+            ? null
+            : DateTime.fromMillisecondsSinceEpoch(r['last_used_ms'] as int),
+      );
 
   FuelEntry _fuelFromRow(Map<String, Object?> r) => FuelEntry(
         id: r['id'] as int,

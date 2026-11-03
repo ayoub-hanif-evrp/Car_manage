@@ -9,6 +9,8 @@ import 'osrm_api_client.dart';
 import 'osrm_models.dart';
 import 'route_geometry.dart';
 
+export '../../data/models.dart' show FavoritePlace, RecentDestination;
+
 enum NavPhase { idle, locating, routing, navigating, error }
 
 /// Open-source navigation session: GPS + OSRM (no live traffic).
@@ -158,18 +160,35 @@ class NavigationSession extends ChangeNotifier {
     notifyListeners();
   }
 
-  Future<void> selectMapDestination(LatLng target) async {
+  Future<bool> selectMapDestination(LatLng target) async {
     destination = target;
     destinationLabel = 'Dropped pin';
     selectedRouteIndex = 0;
-    await _fetchRoutes(reason: 'map tap');
+    return _fetchRoutes(reason: 'map tap');
   }
 
-  Future<void> selectFavorite(FavoritePlace place) async {
+  Future<bool> selectNamedDestination({
+    required String name,
+    required LatLng target,
+  }) async {
+    destination = target;
+    destinationLabel = name;
+    selectedRouteIndex = 0;
+    return _fetchRoutes(reason: 'search');
+  }
+
+  Future<bool> selectFavorite(FavoritePlace place) async {
     destination = LatLng(place.latitude, place.longitude);
     destinationLabel = place.name;
     selectedRouteIndex = 0;
-    await _fetchRoutes(reason: 'favorite');
+    return _fetchRoutes(reason: 'favorite');
+  }
+
+  Future<bool> selectRecent(RecentDestination place) async {
+    destination = LatLng(place.latitude, place.longitude);
+    destinationLabel = place.name;
+    selectedRouteIndex = 0;
+    return _fetchRoutes(reason: 'recent');
   }
 
   void selectRouteIndex(int index) {
@@ -190,18 +209,19 @@ class NavigationSession extends ChangeNotifier {
     notifyListeners();
   }
 
-  Future<void> refreshRoute() => _fetchRoutes(reason: 'manual refresh');
+  Future<bool> refreshRoute() => _fetchRoutes(reason: 'manual refresh');
 
-  Future<void> _fetchRoutes({required String reason}) async {
+  /// Returns true when at least one route was received.
+  Future<bool> _fetchRoutes({required String reason}) async {
     final from = userPosition;
     final to = destination;
     if (from == null || to == null) {
       errorMessage = 'Need GPS and a destination to route.';
       phase = NavPhase.error;
       notifyListeners();
-      return;
+      return false;
     }
-    if (routingBusy) return;
+    if (routingBusy) return false;
     routingBusy = true;
     phase = NavPhase.routing;
     errorMessage = null;
@@ -215,12 +235,13 @@ class NavigationSession extends ChangeNotifier {
       selectedRouteIndex = 0;
       phase = NavPhase.navigating;
       statusNote =
-          'OSRM estimate only (no live traffic). Fetched ${response.fetchedAt.toLocal()}. '
-          'Public demo ≤1 req/s — not a production SLA.';
+          'Estimate only — no live traffic. OSRM public demo ≤1 req/s.';
+      return true;
     } catch (e) {
       phase = NavPhase.error;
       errorMessage = e.toString();
       statusNote = null;
+      return false;
     } finally {
       routingBusy = false;
       notifyListeners();

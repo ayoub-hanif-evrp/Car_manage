@@ -30,6 +30,7 @@ class AppState extends ChangeNotifier {
   List<RepairEntry> repairs = const [];
   List<ReminderEntry> reminders = const [];
   List<FavoritePlace> favorites = const [];
+  List<RecentDestination> recentDestinations = const [];
 
   DateTime dashboardMonth = DateTime(DateTime.now().year, DateTime.now().month);
 
@@ -43,6 +44,7 @@ class AppState extends ChangeNotifier {
       repairs = await _db.getRepairs();
       reminders = await _db.getReminders();
       favorites = await _db.getFavorites();
+      recentDestinations = await _db.getRecents();
       await _notifications.syncReminders(reminders);
     } catch (e) {
       error = e.toString();
@@ -214,6 +216,13 @@ class AppState extends ChangeNotifier {
     notifyListeners();
   }
 
+  FavoritePlace? favoriteByKind(PlaceKind kind) {
+    for (final f in favorites) {
+      if (f.kind == kind) return f;
+    }
+    return null;
+  }
+
   Future<void> saveFavorite(FavoritePlace place, {bool isNew = false}) async {
     if (isNew) {
       await _db.insertFavorite(place);
@@ -227,6 +236,35 @@ class AppState extends ChangeNotifier {
   Future<void> deleteFavorite(int id) async {
     await _db.deleteFavorite(id);
     favorites = await _db.getFavorites();
+    notifyListeners();
+  }
+
+  /// Call after a destination is chosen and routing succeeds.
+  Future<void> recordDestinationUse({
+    required String name,
+    required double latitude,
+    required double longitude,
+    int? favoriteId,
+  }) async {
+    await _db.upsertRecent(
+      name: name,
+      latitude: latitude,
+      longitude: longitude,
+    );
+    if (favoriteId != null) {
+      await _db.recordFavoriteVisit(favoriteId);
+    } else {
+      for (final f in favorites) {
+        final dLat = (f.latitude - latitude).abs();
+        final dLon = (f.longitude - longitude).abs();
+        if (dLat < 0.0004 && dLon < 0.0004) {
+          await _db.recordFavoriteVisit(f.id);
+          break;
+        }
+      }
+    }
+    favorites = await _db.getFavorites();
+    recentDestinations = await _db.getRecents();
     notifyListeners();
   }
 

@@ -2,7 +2,9 @@ import 'package:flutter/material.dart';
 
 import '../../core/app_state.dart';
 import '../../core/format.dart';
+import '../../core/theme.dart';
 import '../reminders/reminders_panel.dart';
+import '../favorites/favorites_panel.dart';
 
 class DashboardScreen extends StatelessWidget {
   const DashboardScreen({super.key, required this.state});
@@ -24,10 +26,17 @@ class DashboardScreen extends StatelessWidget {
     final recent = state.recentTransactions();
 
     return ListView(
-      padding: const EdgeInsets.all(16),
+      padding: const EdgeInsets.fromLTRB(16, 20, 16, 24),
       children: [
-        Text('Dashboard', style: Theme.of(context).textTheme.headlineSmall),
-        const SizedBox(height: 12),
+        Text('My Logan', style: Theme.of(context).textTheme.headlineMedium),
+        const SizedBox(height: 4),
+        Text(
+          'Car records for your Dacia Logan',
+          style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                color: LoganTheme.muted,
+              ),
+        ),
+        const SizedBox(height: 16),
         Row(
           children: [
             IconButton(
@@ -53,13 +62,13 @@ class DashboardScreen extends StatelessWidget {
           detail: 'Fuel ${formatDh(fuel)} · Repairs ${formatDh(repairs)} · '
               '$fuelings fueling${fuelings == 1 ? '' : 's'}',
         ),
-        const SizedBox(height: 8),
+        const SizedBox(height: 10),
         _StatCard(
           title: 'All-time spending',
           value: formatDh(state.lifetimeSpend),
           detail: 'Fuel purchases + repair entries only',
         ),
-        const SizedBox(height: 8),
+        const SizedBox(height: 10),
         _StatCard(
           title: 'Latest odometer (manual)',
           value: state.latestOdometer == null
@@ -67,7 +76,7 @@ class DashboardScreen extends StatelessWidget {
               : formatKm(state.latestOdometer!),
           detail: 'Not a live vehicle reading',
         ),
-        const SizedBox(height: 8),
+        const SizedBox(height: 10),
         _StatCard(
           title: 'Fuel consumption',
           value: consumption.hasReliableData
@@ -78,11 +87,16 @@ class DashboardScreen extends StatelessWidget {
                   '(full-to-full estimate)'
               : 'Needs two successive full-tank (Plein) records with valid odometer.',
         ),
-        const SizedBox(height: 16),
+        const SizedBox(height: 20),
         Text('Last 6 months', style: Theme.of(context).textTheme.titleMedium),
-        const SizedBox(height: 8),
-        SizedBox(
-          height: 140,
+        const SizedBox(height: 10),
+        Container(
+          height: 148,
+          padding: const EdgeInsets.fromLTRB(8, 12, 8, 8),
+          decoration: BoxDecoration(
+            color: LoganTheme.paper,
+            borderRadius: BorderRadius.circular(16),
+          ),
           child: Row(
             crossAxisAlignment: CrossAxisAlignment.end,
             children: [
@@ -115,29 +129,50 @@ class DashboardScreen extends StatelessWidget {
             ],
           ),
         ),
-        const SizedBox(height: 4),
+        const SizedBox(height: 6),
         Text(
-          'Green = fuel · Brown = repairs',
-          style: Theme.of(context).textTheme.labelSmall,
+          'Teal = fuel · Amber = repairs',
+          style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                color: LoganTheme.muted,
+              ),
         ),
-        const SizedBox(height: 16),
+        const SizedBox(height: 20),
         Text('Reminders', style: Theme.of(context).textTheme.titleMedium),
         const SizedBox(height: 8),
         RemindersPanel(state: state),
-        const SizedBox(height: 16),
+        const SizedBox(height: 20),
+        FavoritesPanel(state: state),
+        const SizedBox(height: 20),
         Text('Recent transactions', style: Theme.of(context).textTheme.titleMedium),
         const SizedBox(height: 8),
         if (recent.isEmpty)
-          const Text('No transactions yet.')
+          Text(
+            'No transactions yet.',
+            style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                  color: LoganTheme.muted,
+                ),
+          )
         else
           for (final t in recent)
-            ListTile(
-              contentPadding: EdgeInsets.zero,
-              dense: true,
-              leading: Icon(t.isFuel ? Icons.local_gas_station : Icons.build),
-              title: Text(t.label),
-              subtitle: Text(formatDate(t.date)),
-              trailing: Text(formatDh(t.amountDh)),
+            Container(
+              margin: const EdgeInsets.only(bottom: 6),
+              decoration: BoxDecoration(
+                color: LoganTheme.paper,
+                borderRadius: BorderRadius.circular(14),
+              ),
+              child: ListTile(
+                dense: true,
+                leading: Icon(
+                  t.isFuel ? Icons.local_gas_station : Icons.build,
+                  color: LoganTheme.accent,
+                ),
+                title: Text(t.label),
+                subtitle: Text(formatDate(t.date)),
+                trailing: Text(
+                  formatDh(t.amountDh),
+                  style: Theme.of(context).textTheme.titleSmall,
+                ),
+              ),
             ),
       ],
     );
@@ -157,20 +192,31 @@ class _StatCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Card(
-      elevation: 0,
-      child: Padding(
-        padding: const EdgeInsets.all(12),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(title, style: Theme.of(context).textTheme.labelLarge),
-            const SizedBox(height: 4),
-            Text(value, style: Theme.of(context).textTheme.titleLarge),
-            const SizedBox(height: 4),
-            Text(detail, style: Theme.of(context).textTheme.bodySmall),
-          ],
-        ),
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: LoganTheme.paper,
+        borderRadius: BorderRadius.circular(16),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            title,
+            style: Theme.of(context).textTheme.labelLarge?.copyWith(
+                  color: LoganTheme.muted,
+                ),
+          ),
+          const SizedBox(height: 6),
+          Text(value, style: Theme.of(context).textTheme.headlineSmall),
+          const SizedBox(height: 6),
+          Text(
+            detail,
+            style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                  color: LoganTheme.muted,
+                ),
+          ),
+        ],
       ),
     );
   }
@@ -198,8 +244,8 @@ class _MonthBar extends StatelessWidget {
       child: Column(
         mainAxisAlignment: MainAxisAlignment.end,
         children: [
-          Container(height: repairH, color: const Color(0xFF8B5E3C)),
-          Container(height: fuelH, color: const Color(0xFF1B4D3E)),
+          Container(height: repairH, color: LoganTheme.caution),
+          Container(height: fuelH, color: LoganTheme.accent),
         ],
       ),
     );

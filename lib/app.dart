@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import 'core/app_state.dart';
+import 'core/theme.dart';
 import 'features/shell/home_shell.dart';
 
 class MyLoganApp extends StatelessWidget {
@@ -13,18 +14,7 @@ class MyLoganApp extends StatelessWidget {
     return MaterialApp(
       title: 'My Logan',
       debugShowCheckedModeBanner: false,
-      theme: ThemeData(
-        colorScheme: ColorScheme.fromSeed(
-          seedColor: const Color(0xFF1B4D3E),
-          brightness: Brightness.light,
-        ),
-        useMaterial3: true,
-        visualDensity: VisualDensity.compact,
-        cardTheme: const CardThemeData(
-          margin: EdgeInsets.zero,
-          elevation: 0,
-        ),
-      ),
+      theme: LoganTheme.light(),
       home: AnimatedBuilder(
         animation: state,
         builder: (context, _) {
