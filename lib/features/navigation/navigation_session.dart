@@ -4,18 +4,18 @@ import 'package:flutter/foundation.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:latlong2/latlong.dart';
 
+import '../../data/models.dart';
+import 'osrm_api_client.dart';
+import 'osrm_models.dart';
 import 'route_geometry.dart';
-import 'tomtom_api_client.dart';
-import 'tomtom_models.dart';
 
-enum NavPhase { idle, locating, searching, routing, navigating, error }
+enum NavPhase { idle, locating, routing, navigating, error }
 
-/// Live TomTom navigation session (map + GPS + traffic routes).
-/// Resources are created only while the Navigation tab is active.
+/// Open-source navigation session: GPS + OSRM (no live traffic).
 class NavigationSession extends ChangeNotifier {
-  NavigationSession({TomTomApiClient? client}) : _client = client ?? TomTomApiClient();
+  NavigationSession({OsrmApiClient? client}) : _client = client ?? OsrmApiClient();
 
-  final TomTomApiClient _client;
+  final OsrmApiClient _client;
 
   NavPhase phase = NavPhase.idle;
   String? errorMessage;
@@ -25,9 +25,9 @@ class NavigationSession extends ChangeNotifier {
   double? userHeading;
   bool followCamera = true;
 
-  List<TomTomSearchResult> searchResults = const [];
-  TomTomSearchResult? destination;
-  TomTomRouteResponse? routeResponse;
+  LatLng? destination;
+  String? destinationLabel;
+  OsrmRouteResponse? routeResponse;
   int selectedRouteIndex = 0;
   bool routingBusy = false;
 
@@ -35,24 +35,40 @@ class NavigationSession extends ChangeNotifier {
   DateTime? _lastRerouteAttempt;
   DateTime? _lastCameraNotify;
   StreamSubscription<Position>? _gpsSub;
-  Timer? _searchDebounce;
   bool _disposed = false;
 
   static const offRouteMeters = 45.0;
   static const minRerouteSeconds = 20;
-  static const trafficRefreshMinutes = 3;
 
-  TomTomRouteOption? get activeRoute {
+  OsrmRouteOption? get activeRoute {
     final routes = routeResponse?.routes;
     if (routes == null || routes.isEmpty) return null;
-    final i = selectedRouteIndex.clamp(0, routes.length - 1);
-    return routes[i];
+    return routes[selectedRouteIndex.clamp(0, routes.length - 1)];
+  }
+
+  OsrmManeuver? get nextManeuver {
+    final route = activeRoute;
+    final pos = userPosition;
+    if (route == null || route.maneuvers.isEmpty) return null;
+    if (pos == null) return route.maneuvers.first;
+    OsrmManeuver? best;
+    var bestD = double.infinity;
+    for (final m in route.maneuvers) {
+      if (m.type == 'depart' || m.type == 'arrive') continue;
+      final d = RouteGeometry.distanceMeters(pos, m.location);
+      if (d < bestD) {
+        bestD = d;
+        best = m;
+      }
+    }
+    return best ?? route.maneuvers.first;
   }
 
   int? get remainingMeters {
     final route = activeRoute;
     final pos = userPosition;
-    if (route == null || pos == null) return route?.lengthInMeters;
+    if (route == null) return null;
+    if (pos == null) return route.distanceMeters.round();
     final near = RouteGeometry.nearestOnRoute(route.points, pos);
     return RouteGeometry.remainingLengthMeters(route.points, near.index).round();
   }
@@ -62,9 +78,9 @@ class NavigationSession extends ChangeNotifier {
     if (route == null) return null;
     final total = RouteGeometry.totalLengthMeters(route.points);
     final rem = remainingMeters;
-    if (rem == null || total <= 0) return route.travelTimeInSeconds;
+    if (rem == null || total <= 0) return route.durationSeconds.round();
     final ratio = (rem / total).clamp(0.0, 1.0);
-    return (route.travelTimeInSeconds * ratio).round();
+    return (route.durationSeconds * ratio).round();
   }
 
   DateTime? get etaClock {
@@ -77,7 +93,8 @@ class NavigationSession extends ChangeNotifier {
     if (_disposed) return;
     phase = NavPhase.locating;
     errorMessage = null;
-    statusNote = null;
+    statusNote =
+        'ETA is a road-network estimate only — OSRM has no live Casablanca traffic.';
     notifyListeners();
 
     final enabled = await Geolocator.isLocationServiceEnabled();
@@ -133,7 +150,6 @@ class NavigationSession extends ChangeNotifier {
   Future<void> stop() async {
     await _gpsSub?.cancel();
     _gpsSub = null;
-    _searchDebounce?.cancel();
     phase = NavPhase.idle;
   }
 
@@ -142,46 +158,16 @@ class NavigationSession extends ChangeNotifier {
     notifyListeners();
   }
 
-  void scheduleSearch(String query) {
-    _searchDebounce?.cancel();
-    _searchDebounce = Timer(const Duration(milliseconds: 450), () {
-      unawaited(_runSearch(query));
-    });
-  }
-
-  Future<void> _runSearch(String query) async {
-    if (query.trim().length < 2) {
-      searchResults = const [];
-      notifyListeners();
-      return;
-    }
-    phase = NavPhase.searching;
-    notifyListeners();
-    try {
-      searchResults = await _client.searchMorocco(query);
-      errorMessage = null;
-    } catch (e) {
-      searchResults = const [];
-      errorMessage = e.toString();
-    }
-    if (destination == null) phase = NavPhase.idle;
-    notifyListeners();
-  }
-
-  Future<void> selectDestination(TomTomSearchResult result) async {
-    destination = result;
-    searchResults = const [];
+  Future<void> selectMapDestination(LatLng target) async {
+    destination = target;
+    destinationLabel = 'Dropped pin';
     selectedRouteIndex = 0;
-    await _fetchRoutes(reason: 'destination');
+    await _fetchRoutes(reason: 'map tap');
   }
 
-  Future<void> selectFavorite(LatLng target, String name) async {
-    destination = TomTomSearchResult(
-      id: 'favorite:$name',
-      title: name,
-      subtitle: 'Favorite',
-      position: target,
-    );
+  Future<void> selectFavorite(FavoritePlace place) async {
+    destination = LatLng(place.latitude, place.longitude);
+    destinationLabel = place.name;
     selectedRouteIndex = 0;
     await _fetchRoutes(reason: 'favorite');
   }
@@ -195,10 +181,12 @@ class NavigationSession extends ChangeNotifier {
 
   Future<void> clearRoute() async {
     destination = null;
+    destinationLabel = null;
     routeResponse = null;
     selectedRouteIndex = 0;
     phase = userPosition == null ? NavPhase.locating : NavPhase.idle;
-    statusNote = null;
+    statusNote =
+        'ETA is a road-network estimate only — OSRM has no live Casablanca traffic.';
     notifyListeners();
   }
 
@@ -206,7 +194,7 @@ class NavigationSession extends ChangeNotifier {
 
   Future<void> _fetchRoutes({required String reason}) async {
     final from = userPosition;
-    final to = destination?.position;
+    final to = destination;
     if (from == null || to == null) {
       errorMessage = 'Need GPS and a destination to route.';
       phase = NavPhase.error;
@@ -217,7 +205,7 @@ class NavigationSession extends ChangeNotifier {
     routingBusy = true;
     phase = NavPhase.routing;
     errorMessage = null;
-    statusNote = 'Requesting TomTom traffic-aware route ($reason)…';
+    statusNote = 'Requesting OSRM driving route ($reason)…';
     notifyListeners();
 
     try {
@@ -226,13 +214,9 @@ class NavigationSession extends ChangeNotifier {
       _lastRouteAt = response.fetchedAt;
       selectedRouteIndex = 0;
       phase = NavPhase.navigating;
-      final best = response.routes.first;
-      statusNote = best.hasLiveTrafficSignal
-          ? 'TomTom route with traffic delay ${best.trafficDelayInSeconds}s '
-              '(fetched ${response.fetchedAt.toLocal()})'
-          : 'TomTom route returned; traffic delay field is 0s right now '
-              '(live vs no-traffic times still shown when API provides them). '
-              'Verify congestion effect on a Casablanca drive.';
+      statusNote =
+          'OSRM estimate only (no live traffic). Fetched ${response.fetchedAt.toLocal()}. '
+          'Public demo ≤1 req/s — not a production SLA.';
     } catch (e) {
       phase = NavPhase.error;
       errorMessage = e.toString();
@@ -245,7 +229,7 @@ class NavigationSession extends ChangeNotifier {
 
   void _onGps(Position pos) {
     _applyPosition(pos);
-    unawaited(_maybeRerouteOrRefresh());
+    unawaited(_maybeReroute());
   }
 
   void _applyPosition(Position pos, {bool forceNotify = false}) {
@@ -272,34 +256,26 @@ class NavigationSession extends ChangeNotifier {
     }
   }
 
-  Future<void> _maybeRerouteOrRefresh() async {
+  Future<void> _maybeReroute() async {
     final route = activeRoute;
     final pos = userPosition;
     if (route == null || pos == null || destination == null || routingBusy) return;
 
     final near = RouteGeometry.nearestOnRoute(route.points, pos);
-    final now = DateTime.now();
+    if (near.distanceMeters <= offRouteMeters) return;
 
-    if (near.distanceMeters > offRouteMeters) {
-      final last = _lastRerouteAttempt;
-      if (last == null || now.difference(last).inSeconds >= minRerouteSeconds) {
-        _lastRerouteAttempt = now;
-        await _fetchRoutes(reason: 'off-route');
-      }
+    final now = DateTime.now();
+    final last = _lastRerouteAttempt ?? _lastRouteAt;
+    if (last != null && now.difference(last).inSeconds < minRerouteSeconds) {
       return;
     }
-
-    final lastRoute = _lastRouteAt;
-    if (lastRoute != null &&
-        now.difference(lastRoute).inMinutes >= trafficRefreshMinutes) {
-      await _fetchRoutes(reason: 'traffic refresh');
-    }
+    _lastRerouteAttempt = now;
+    await _fetchRoutes(reason: 'off-route');
   }
 
   @override
   void dispose() {
     _disposed = true;
-    _searchDebounce?.cancel();
     unawaited(stop());
     _client.dispose();
     super.dispose();

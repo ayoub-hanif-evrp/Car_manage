@@ -1,32 +1,32 @@
-# Navigation — TomTom prototype
+# Navigation — OpenFreeMap + OSRM prototype
 
 **Date:** 2026-11-03  
-**Device:** Samsung Galaxy A02 (SM-A022F), Android 10 / API 29
+**Device:** Samsung Galaxy A02 (SM-A022F), Android 10
 
 ## Decision
 
-Magic Lane was stopped (cost + Morocco traffic uncertainty).  
-**TomTom Maps APIs** are the selected provider for the navigation prototype.  
-Details: [TOMTOM.md](TOMTOM.md).
+Switched away from TomTom / Magic Lane / Mapbox / Google for this prototype.
 
-## What ships in the prototype (with API key)
+**Stack (no accounts, no API keys):**
 
-- Online TomTom raster 2D map (`flutter_map`)
-- Live GPS positioning
-- Morocco destination search
-- Fastest traffic-aware route (`traffic=true`) + alternatives
-- Remaining distance / time / ETA HUD from TomTom summary + GPS progress
-- Camera follow + car marker rotation
-- Favorites as destination shortcuts
+| Piece | Role |
+|---|---|
+| MapLibre GL Flutter | Native 2D vector map |
+| OpenFreeMap Liberty | Free map style/tiles |
+| Public FOSSGIS OSRM (`router.project-osrm.org`) | Driving routes, distance, ETA estimate, maneuvers |
+| Geolocator | Live GPS |
+| Local Darija MP3s | Planned — not wired yet |
 
-## What is NOT claimed yet
+## Honest limitations
 
-- Full native TomTom Navigation SDK / polished turn-by-turn Darija events
-- Galaxy A02 20–30 min performance proof
-- Guaranteed Casablanca congestion quality (must be drive-tested)
+- **No live congestion / traffic delays** in Casablanca. ETA is a **road-network estimate**.
+- Public OSRM: ≤1 request/second, identifying User-Agent, **no uptime SLA**.
+- Not Waze-level reliability.
 
-## Owner action
+## Architecture notes
 
-Provide a free-tier TomTom API key and rebuild with  
-`--dart-define=TOMTOM_API_KEY=...`  
-Do not enable paid overage without approval.
+- Map initializes only on the Navigation tab.
+- Route refresh is rate-limited; never on every GPS sample.
+- Car records remain SQLite-only and independent of the map.
+
+See also [NAV_ARCHITECTURE_REVIEW.md](NAV_ARCHITECTURE_REVIEW.md) (prior TomTom licensing findings still useful historically).

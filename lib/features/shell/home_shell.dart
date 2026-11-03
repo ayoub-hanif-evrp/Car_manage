@@ -34,20 +34,24 @@ class _HomeShellState extends State<HomeShell> {
   @override
   Widget build(BuildContext context) {
     final state = widget.state;
-    final pages = [
-      DashboardScreen(state: state),
-      FuelScreen(state: state),
-      GarageScreen(state: state),
-      NavigationScreen(state: state),
-    ];
+    // Keep car tabs in an IndexedStack; build Navigation only when selected
+    // so MapLibre/GPS are not alive on Dashboard (A02 RAM + spec).
+    final Widget body;
+    if (_index == _navIndex) {
+      body = NavigationScreen(state: state);
+    } else {
+      body = IndexedStack(
+        index: _index,
+        children: [
+          DashboardScreen(state: state),
+          FuelScreen(state: state),
+          GarageScreen(state: state),
+        ],
+      );
+    }
 
     return Scaffold(
-      body: SafeArea(
-        child: IndexedStack(
-          index: _index,
-          children: pages,
-        ),
-      ),
+      body: SafeArea(child: body),
       bottomNavigationBar: NavigationBar(
         selectedIndex: _index,
         onDestinationSelected: _select,

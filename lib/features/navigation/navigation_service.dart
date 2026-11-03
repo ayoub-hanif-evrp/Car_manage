@@ -1,6 +1,5 @@
 import 'navigation_gate.dart';
 
-/// Navigation provider abstraction (spec §8).
 abstract class NavigationService {
   bool get isAvailable;
   String get statusMessage;
@@ -10,25 +9,19 @@ abstract class NavigationService {
   Future<void> disposeSession();
 }
 
-/// TomTom-backed gate: map/GPS session is owned by [NavigationMapPage].
-class TomTomNavigationService implements NavigationService {
+class OpenMapNavigationService implements NavigationService {
   bool _sessionOpen = false;
 
   @override
   bool get isAvailable => NavigationGate.canRunPrototype;
 
   @override
-  List<String> get blockers => NavigationGate.blockingReasons;
+  List<String> get blockers => const [];
 
   @override
-  String get statusMessage {
-    if (!NavigationGate.hasApiKey) {
-      return 'TomTom navigation is ready in code, but needs TOMTOM_API_KEY.';
-    }
-    return 'TomTom prototype: raster map, GPS, Morocco search, '
-        'traffic-aware fastest route + alternatives. '
-        'Not a full native Navigation SDK — verify ETA on the A02.';
-  }
+  String get statusMessage =>
+      'OpenFreeMap + OSRM prototype (no account). '
+      'Live traffic: unavailable. ${NavigationGate.notices.last}';
 
   @override
   Future<void> prepare() async {

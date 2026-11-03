@@ -18,7 +18,7 @@ void main() {
     final state = _FakeState();
     await state.load();
     await tester.pumpWidget(MyLoganApp(state: state));
-    await tester.pumpAndSettle();
+    await tester.pump();
 
     expect(find.text('Dashboard'), findsWidgets);
     expect(find.text('Fuel'), findsWidgets);

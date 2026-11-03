@@ -15,7 +15,7 @@ class AppState extends ChangeNotifier {
     DarijaVoicePlayer? voice,
   })  : _db = database ?? AppDatabase.instance,
         _notifications = notifications ?? NotificationService.instance,
-        navigation = navigation ?? TomTomNavigationService(),
+        navigation = navigation ?? OpenMapNavigationService(),
         voice = voice ?? DarijaVoicePlayer();
 
   final AppDatabase _db;
